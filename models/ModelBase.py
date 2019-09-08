@@ -204,6 +204,7 @@ class ModelBase(object):
 
             if self.sample_for_preview is None or choose_preview_history:
                 if choose_preview_history and io.is_support_windows():
+                    io.log_info ("Choose image for the preview history. [p] - next. [enter] - confirm.")
                     wnd_name = "[p] - next. [enter] - confirm."
                     io.named_window(wnd_name)
                     io.capture_keys(wnd_name)
