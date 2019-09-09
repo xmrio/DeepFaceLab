@@ -140,15 +140,15 @@ class SAEModel(ModelBase):
                 
                 def upscale (dim):
                     def func(x):
-                        return SubpixelUpscaler()(Conv2D(dim * 4, kernel_size=3, strides=1, padding='same')(x))
+                        return SubpixelUpscaler()(LeakyReLU(0.1)(Conv2D(dim * 4, kernel_size=3, strides=1, padding='same')(x)))
                     return func
 
                 def enc_flow(e_dims, ae_dims, lowest_dense_res):
                     def func(x):
-                        x = Conv2D(e_dims,   kernel_size=5, strides=2, padding='same')(x)
-                        x = Conv2D(e_dims*2, kernel_size=5, strides=2, padding='same')(x)
-                        x = Conv2D(e_dims*4, kernel_size=5, strides=2, padding='same')(x)
-                        x = Conv2D(e_dims*8, kernel_size=5, strides=2, padding='same')(x)
+                        x = LeakyReLU(0.1)(Conv2D(e_dims,   kernel_size=5, strides=2, padding='same')(x))
+                        x = LeakyReLU(0.1)(Conv2D(e_dims*2, kernel_size=5, strides=2, padding='same')(x))
+                        x = LeakyReLU(0.1)(Conv2D(e_dims*4, kernel_size=5, strides=2, padding='same')(x))
+                        x = LeakyReLU(0.1)(Conv2D(e_dims*8, kernel_size=5, strides=2, padding='same')(x))
 
                         x = Dense(ae_dims)(Flatten()(x))
                         x = Dense(lowest_dense_res * lowest_dense_res * ae_dims)(x)
@@ -182,7 +182,7 @@ class SAEModel(ModelBase):
                         x = ResidualBlock(dims*2)(x)
                         x = ResidualBlock(dims*2)(x)
 
-                        return Conv2D(output_nc, kernel_size=1, padding='valid', activation='sigmoid')(x)
+                        return Conv2D(output_nc, kernel_size=5, padding='same', activation='sigmoid')(x)
                     return func
 
                 self.encoder = modelify(enc_flow(e_dims, ae_dims, lowest_dense_res)) ( Input(bgr_shape) )
@@ -238,15 +238,15 @@ class SAEModel(ModelBase):
                 
                 def upscale (dim):
                     def func(x):
-                        return SubpixelUpscaler()(Conv2D(dim * 4, kernel_size=3, strides=1, padding='same')(x))
+                        return SubpixelUpscaler()(LeakyReLU(0.1)(Conv2D(dim * 4, kernel_size=3, strides=1, padding='same')(x)))
                     return func
 
                 def enc_flow(e_dims):
                     def func(x):
-                        x = Conv2D(e_dims,   kernel_size=5, strides=2, padding='same')(x)
-                        x = Conv2D(e_dims*2, kernel_size=5, strides=2, padding='same')(x)
-                        x = Conv2D(e_dims*4, kernel_size=5, strides=2, padding='same')(x)
-                        x = Conv2D(e_dims*8, kernel_size=5, strides=2, padding='same')(x)
+                        x = LeakyReLU(0.1)(Conv2D(e_dims,   kernel_size=5, strides=2, padding='same')(x))
+                        x = LeakyReLU(0.1)(Conv2D(e_dims*2, kernel_size=5, strides=2, padding='same')(x))
+                        x = LeakyReLU(0.1)(Conv2D(e_dims*4, kernel_size=5, strides=2, padding='same')(x))
+                        x = LeakyReLU(0.1)(Conv2D(e_dims*8, kernel_size=5, strides=2, padding='same')(x))
                         x = Flatten()(x)
                         return x
                     return func
@@ -284,7 +284,7 @@ class SAEModel(ModelBase):
                         x = ResidualBlock(d_dims*2)(x)
                         x = ResidualBlock(d_dims*2)(x)
 
-                        return Conv2D(output_nc, kernel_size=1, padding='valid', activation='sigmoid')(x)
+                        return Conv2D(output_nc, kernel_size=5, padding='same', activation='sigmoid')(x)
                     return func
 
                 self.encoder = modelify(enc_flow(e_dims)) ( Input(bgr_shape) )
@@ -345,16 +345,17 @@ class SAEModel(ModelBase):
         elif 'liae' in self.options['archi']:
             self.model = SAELIAEModel (resolution, ae_dims, e_ch_dims, d_ch_dims, learn_mask)
             
+        model_filename_list = self.model.get_model_filename_list() + [ [self.DURNU, 'DURNU.h5'] ]
         if self.is_first_run():
             if self.options.get('ca_weights',False):
                 conv_weights_list = []
-                for model, _ in self.model.get_model_filename_list() + [ [self.DURNU, ''] ]:
+                for model, _ in model_filename_list:
                     for layer in model.layers:
                         if type(layer) == keras.layers.Conv2D:
                             conv_weights_list += [layer.weights[0]] #- is Conv2D kernel_weights
                 CAInitializerMP ( conv_weights_list )
         else:
-            self.load_weights_safe( self.model.get_model_filename_list() )
+            self.load_weights_safe(model_filename_list)
 
         warped_src = self.model.warped_src
         target_src = Input ( (resolution, resolution, 3) )
