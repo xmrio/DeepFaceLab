@@ -387,9 +387,9 @@ class SAEModel(ModelBase):
             pred_dst_dstm = self.model.pred_dst_dstm
             pred_src_dstm = self.model.pred_src_dstm
         
-        pred_src_src_sigm = self.model.pred_src_src # + 1
-        pred_dst_dst_sigm = self.model.pred_dst_dst # + 1
-        pred_src_dst_sigm = self.model.pred_src_dst # + 1
+        pred_src_src_sigm = self.model.pred_src_src
+        pred_dst_dst_sigm = self.model.pred_dst_dst
+        pred_src_dst_sigm = self.model.pred_src_dst
 
         pred_src_src_masked = pred_src_src_sigm*target_srcm_sigm
         pred_dst_dst_masked = pred_dst_dst_sigm*target_dstm_sigm
@@ -403,14 +403,14 @@ class SAEModel(ModelBase):
         if self.is_training_mode:
             self.src_dst_opt      = Adam(lr=5e-5, beta_1=0.5, beta_2=0.999, clipnorm=1.0 if self.options['clipgrad'] else 0.0, tf_cpu_mode=self.options['optimizer_mode']-1)
             self.src_dst_mask_opt = Adam(lr=5e-5, beta_1=0.5, beta_2=0.999, clipnorm=1.0 if self.options['clipgrad'] else 0.0, tf_cpu_mode=self.options['optimizer_mode']-1)
-            self.sr_opt = Adam(lr=1e-4, beta_1=0.9, beta_2=0.999, tf_cpu_mode=self.options['optimizer_mode']-1)
+            self.sr_opt = Adam(lr=5e-5, beta_1=0.9, beta_2=0.999, tf_cpu_mode=self.options['optimizer_mode']-1)
 
             if not self.options['pixel_loss']:
                 src_loss = K.mean ( 10*dssim(kernel_size=int(resolution/11.6),max_value=1.0)( target_src_masked_opt, pred_src_src_masked_opt) )
             else:
                 src_loss = K.mean ( 50*K.square( target_src_masked_opt - pred_src_src_masked_opt ) )
 
-            face_style_power = self.options['face_style_power']  / 100.0
+            face_style_power = self.options['face_style_power'] / 100.0
             if face_style_power != 0:
                 src_loss += style_loss(gaussian_blur_radius=resolution//16, loss_weight=face_style_power, wnd_size=0)( psd_target_dst_masked, target_dst_masked )
 
@@ -436,7 +436,7 @@ class SAEModel(ModelBase):
             if stage == 2:
                 sr_src_src = self.DURNU(pred_src_src*2-1) / 2 + 0.5
 
-                sr_loss = K.mean( 0.75*K.abs(sr_src_src*target_srcm-target_src*target_srcm))
+                sr_loss = K.mean( 75*K.abs(sr_src_src*target_srcm-target_src*target_srcm))
 
                 self.sr_train = K.function ([warped_src, target_src, target_srcm] ,[sr_loss], self.sr_opt.get_updates(sr_loss, self.DURNU.trainable_weights)  )
 
@@ -587,19 +587,19 @@ class SAEModel(ModelBase):
     @staticmethod
     def DURNUFlow():
 
-        def DURBUFlow(in_dim, out_dim, res_dim, f_size=3, dilation=1):
+        def DURBUFlow(dim, res_dim, f_size=3, dilation=1):
 
             def func(x, res):
                 x_r = x
 
-                x = ReLU()(InstanceNormalization(axis=-1)( Conv2D(in_dim, kernel_size=3, strides=1, padding='same')(x) ))
-                x = Conv2D(in_dim, kernel_size=3, strides=1, padding='same')(x)
+                x = ReLU()(InstanceNormalization(axis=-1)( Conv2D(dim, kernel_size=3, strides=1, padding='same')(x) ))
+                x = Conv2D(dim, kernel_size=3, strides=1, padding='same')(x)
 
                 x = Add()([x,x_r])
 
                 x = ReLU()(InstanceNormalization(axis=-1)(x))
 
-                x = InstanceNormalization(axis=-1)(Conv2D(in_dim*2, kernel_size=1, strides=1, padding='same')(x) )
+                x = InstanceNormalization(axis=-1)(Conv2D(res_dim*4, kernel_size=1, strides=1, padding='same')(x) )
                 x = SubpixelUpscaler()(x)
 
                 x = Conv2D(res_dim, kernel_size=f_size, strides=1, padding='same', dilation_rate=dilation)(x)
@@ -607,7 +607,7 @@ class SAEModel(ModelBase):
                 x = ReLU()(InstanceNormalization(axis=-1)(x))
                 res = x
 
-                x = Conv2D(out_dim, kernel_size=3, strides=2, padding='same')(x)
+                x = Conv2D(dim, kernel_size=3, strides=2, padding='same')(x)
                 x = Add()([x,x_r])
                 x = ReLU()(InstanceNormalization(axis=-1)(x))
                 return x, res
@@ -620,15 +620,14 @@ class SAEModel(ModelBase):
             res = x = ReLU()(InstanceNormalization(axis=-1)( Conv2D(128, kernel_size=3, strides=2, padding='same')(x) ))
             x =       ReLU()(InstanceNormalization(axis=-1)( Conv2D(256, kernel_size=3, strides=2, padding='same')(x) ))
 
-            x, res = DURBUFlow(256, 256, 128, f_size=3, dilation=3)(x, res)
-            x, res = DURBUFlow(256, 256, 128, f_size=7, dilation=1)(x, res)
-            x, res = DURBUFlow(256, 256, 128, f_size=3, dilation=3)(x, res)
-            x, res = DURBUFlow(256, 256, 128, f_size=7, dilation=1)(x, res)
-            x, res = DURBUFlow(256, 256, 128, f_size=3, dilation=2)(x, res)
-            x, res = DURBUFlow(256, 256, 128, f_size=5, dilation=1)(x, res)
+            x, res = DURBUFlow(256, 128, f_size=3, dilation=3)(x, res)
+            x, res = DURBUFlow(256, 128, f_size=7, dilation=1)(x, res)
+            x, res = DURBUFlow(256, 128, f_size=3, dilation=3)(x, res)
+            x, res = DURBUFlow(256, 128, f_size=7, dilation=1)(x, res)
+            x, res = DURBUFlow(256, 128, f_size=3, dilation=2)(x, res)
+            x, res = DURBUFlow(256, 128, f_size=5, dilation=1)(x, res)
 
             x = SubpixelUpscaler()(InstanceNormalization(axis=-1)( Conv2D(128*4, kernel_size=1, strides=1, padding='same')(x) ))
-
             x = ReLU()(InstanceNormalization(axis=-1)( Conv2D(128,  kernel_size=3, strides=1, padding='same')(x) ))
 
             x = SubpixelUpscaler()(InstanceNormalization(axis=-1)( Conv2D(64*4, kernel_size=1, strides=1, padding='same')(x) ))
